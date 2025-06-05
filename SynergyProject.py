@@ -5,9 +5,9 @@
 import pandas  # Import the pandas library for handling dataframes
 
 # Import Trackman file/filepath
-TMfile = pandas.read_csv("~/Downloads/2024 IU Trackman Files/20240511-UNebraska-2_unverified.csv")  # Load Trackman CSV data
+TMfile = pandas.read_csv('~/Downloads/2024 IU Trackman Files/20240312-Vanderbilt-1_unverified.csv')  # Load Trackman CSV data
 # Import Synergy output file/filepath
-SynergyFile = pandas.read_csv("~/SynergySports/dsagerma@iu.edu/MyEdits/Test Playlist/Export.csv")  # Load Synergy CSV data
+SynergyFile = pandas.read_csv("~/Downloads/Thompson/Export.csv")  # Load Synergy CSV data
 
 ### Create a key to connect the pitches/rows in each dataframe
 
@@ -18,23 +18,20 @@ SynergyFile['Inning'] = SynergyFile['Inning'].str.extract('(\d+)')
 
 # Concatenate relevant columns to create a unique "Key" for identifying rows
 SynergyFile['Key'] = (
-    SynergyFile['Date'].astype(str) + "_" +
     SynergyFile['Pitcher'] + "_" +
-    SynergyFile['Hitter'] + "_" +
-    SynergyFile['Inning'] + "_" +
-    SynergyFile['Count']
+    SynergyFile['#'].astype(int).astype(str)
 )
 
 # Key for Trackman file
 
 # Clean NA rows
-TMfile = TMfile.dropna(subset=['Date'])
+TMfile = TMfile.dropna(subset=['Pitcher'])
 
 # Create pitch count column
-TMfile['#'] = TMfile.groupby("Pitcher").cumcount() + 1
+TMfile['PitchCount'] = TMfile.groupby("Pitcher").cumcount() + 1
 
 # Adjust the "Date" column format to match Synergy's date format
-TMfile['Date'] = pandas.to_datetime(TMfile['Date'], format='%Y-%m-%d').dt.strftime('%m/%d/%Y')
+# TMfile['Date'] = pandas.to_datetime(TMfile['Date'], format='%Y-%m-%d').dt.strftime('%m/%d/%Y')
 
 # Define a function to reformat names into the "Last, F." format
 def reformat_name(full_name):
@@ -51,11 +48,8 @@ TMfile['Batter'] = TMfile['Batter'].apply(reformat_name)
 
 # Concatenate relevant columns to create a unique "Key" for Trackman rows
 TMfile['Key'] = (
-    TMfile['Date'].astype(str) + "_" +
     TMfile['Pitcher'].astype(str) + "_" +
-    TMfile['Batter'].astype(str) + "_" +
-    TMfile['Inning'].astype(int).astype(str) + "_" +
-    TMfile['Balls'].astype(int).astype(str) + "-" + TMfile['Strikes'].astype(int).astype(str)
+    TMfile['PitchCount'].astype(int).astype(str)
 )
 
 # Optional debugging: Print column data types to identify import issues
@@ -67,7 +61,10 @@ TMfile['Key'] = (
 merged_df = pandas.merge(TMfile, SynergyFile, on='Key', how='inner')
 
 # Select only the necessary columns for the final merged dataframe
-merged_df = merged_df[['Key', 'Pitcher_x', 'Hitter', 'Balls', 'Strikes', 'TaggedPitchType', 'PitchCall', 'RelSpeed', 'InducedVertBreak', 'HorzBreak', 'SpinRate', 'Inning_x', 'Outs_x', '#']]
+merged_df = merged_df[['Key', 'Pitcher_x', 'Hitter', 'Balls', 'Strikes', 'TaggedPitchType', 'PitchCall', 'RelSpeed', 'InducedVertBreak', 'HorzBreak', 'SpinRate', 'Inning_x', 'Outs_x', 'PitchCount', '#']]
+
+# Change NaN values to 0
+merged_df = merged_df.fillna(0)
 
 # Validate that the merged dataframe has the same number of rows as the Synergy file
 # If not, some pitches may have been excluded, requiring manual checks
@@ -83,21 +80,21 @@ import os  # Import os for handling file paths and directories
 from os import path  # Import path module for file path operations
 
 # List all video files in the specified directory
-clips = os.listdir("/Users/zacharyaisen/SynergySports/dsagerma@iu.edu/MyEdits/Temp playlist from Synergy Baseball App/video/")
-paths = [os.path.join("/Users/zacharyaisen/SynergySports/dsagerma@iu.edu/MyEdits/Temp playlist from Synergy Baseball App/video/", i) for i in clips]
+clips = os.listdir("/Users/zacharyaisen/Downloads/Thompson/video/")
+paths = [os.path.join("/Users/zacharyaisen/Downloads/Thompson/video/", i) for i in clips]
 
 # List of all video file paths
 paths
 
 # Retrieve a list of video numbers from the merged dataframe
-video_nums = list(merged_df['#'])
+video_nums = list(merged_df['#_x'])
 
 import moviepy  # Import moviepy for video editing
 
 # Iterate over the video file paths
 for i in paths:
     # Skip files that are not video files
-    if not i.lower().endswith((".mp4", ".mov", ".avi", ".mkv")):
+    if not i.lower().endswith((".mp4")):
         continue
 
     # Extract the file name and row number
@@ -131,8 +128,8 @@ for i in paths:
     raw_video = VideoFileClip(filepath).without_audio()
 
     # Create text clips for overlay, setting duration and position
-    txt_clip = TextClip(text, fontsize=20, color='white', align='West', bg_color='black').set_pos(('left', 'top')).set_duration(int(raw_video.duration))
-    txt2_clip = TextClip(text2, fontsize=20, color='white', align='East', bg_color='black').set_pos(('right', 'top')).set_duration(int(raw_video.duration))
+    txt_clip = TextClip(text, fontsize=20, font="Roboto-Bold", color='white', align='West', bg_color='black').set_opacity(0.85).set_pos(('left', 'top')).set_duration(raw_video.duration)
+    txt2_clip = TextClip(text2, fontsize=20, font="Roboto-Bold", color='white', align='East', bg_color='black').set_opacity(0.85).set_pos(('right', 'top')).set_duration(raw_video.duration)
 
     # Combine the raw video with text overlays
     video = CompositeVideoClip([raw_video, txt_clip, txt2_clip])
@@ -142,3 +139,23 @@ for i in paths:
 
     # Export the final video as an MP4 file
     video.write_videofile(finalvideo_filename, codec="libx264", preset="ultrafast")
+
+
+###################################
+### Concatenate videos together ###
+###################################
+
+# Lists all videos in the folder
+video_files = [f for f in os.listdir("/Users/zacharyaisen/Downloads/Thompson") if f.endswith("_edited.mp4")]
+
+# Sort videos numerically
+video_files_sorted = sorted(video_files, key=lambda x: int(x.split("_")[0]))
+
+# Load video clips
+clips = [VideoFileClip(os.path.join("/Users/zacharyaisen/Downloads/Thompson", f)) for f in video_files_sorted]
+
+# Concatenate the videos
+final_video = concatenate_videoclips(clips, method="compose")  # method="compose" ensures compatibility
+
+# Export the final combined video
+final_video.write_videofile("final_video.mp4", codec="libx264", preset="ultrafast")
