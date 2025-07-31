@@ -4,10 +4,13 @@
 
 import pandas  # Import the pandas library for handling dataframes
 
+### IMPORTANT: Make your working directory, the folder exported from synergy
 # Import Trackman file/filepath
-TMfile = pandas.read_csv('~/Downloads/2024 IU Trackman Files/20240312-Vanderbilt-1_unverified.csv')  # Load Trackman CSV data
+TMfile = pandas.read_csv("~/Downloads/Turner.csv")  # Load Trackman CSV
 # Import Synergy output file/filepath
-SynergyFile = pandas.read_csv("~/Downloads/Thompson/Export.csv")  # Load Synergy CSV data
+# "Export.csv" is directly in the folder made from synergy
+SynergyFile = pandas.read_csv("Export.csv")  # Load Synergy CSV
+
 
 ### Create a key to connect the pitches/rows in each dataframe
 
@@ -30,10 +33,12 @@ TMfile = TMfile.dropna(subset=['Pitcher'])
 # Create pitch count column
 TMfile['PitchCount'] = TMfile.groupby("Pitcher").cumcount() + 1
 
+# (This section not needed anymore)
 # Adjust the "Date" column format to match Synergy's date format
 # TMfile['Date'] = pandas.to_datetime(TMfile['Date'], format='%Y-%m-%d').dt.strftime('%m/%d/%Y')
 
 # Define a function to reformat names into the "Last, F." format
+# (Trackman & Synergy CSVs have different name formats)
 def reformat_name(full_name):
     parts = full_name.split(", ")
     if len(parts) == 2:
@@ -66,7 +71,7 @@ merged_df = merged_df[['Key', 'Pitcher_x', 'Hitter', 'Balls', 'Strikes', 'Tagged
 # Change NaN values to 0
 merged_df = merged_df.fillna(0)
 
-# Validate that the merged dataframe has the same number of rows as the Synergy file
+# Optional: Validate that the merged dataframe has the same number of rows as the Synergy file
 # If not, some pitches may have been excluded, requiring manual checks
 len(merged_df)
 len(SynergyFile)
@@ -80,8 +85,9 @@ import os  # Import os for handling file paths and directories
 from os import path  # Import path module for file path operations
 
 # List all video files in the specified directory
-clips = os.listdir("/Users/zacharyaisen/Downloads/Thompson/video/")
-paths = [os.path.join("/Users/zacharyaisen/Downloads/Thompson/video/", i) for i in clips]
+# referencing "video" folder inside the folder outputted from synergy
+clips = os.listdir("video")
+paths = [os.path.join("video", i) for i in clips]
 
 # List of all video file paths
 paths
@@ -89,8 +95,8 @@ paths
 # Retrieve a list of video numbers from the merged dataframe
 video_nums = list(merged_df['#_x'])
 
-import moviepy  # Import moviepy for video editing
 
+# Loop to edit all videos, one at a time
 # Iterate over the video file paths
 for i in paths:
     # Skip files that are not video files
@@ -122,14 +128,14 @@ for i in paths:
     text2 = "Inning: " + str(Inning) + "\n" + "Pitcher: " + Pitcher + "\n" + "Batter: " + Batter + "\n" + "Count: " + str(Balls) + "-" + str(Strikes) + "\n" + "Outs: " + str(Outs)
 
     ### Using moviepy to overlay text onto the video
-    from moviepy.editor import *  # Import necessary components for editing
+    from moviepy.editor import *
 
     # Load the video file without audio
     raw_video = VideoFileClip(filepath).without_audio()
 
     # Create text clips for overlay, setting duration and position
-    txt_clip = TextClip(text, fontsize=20, font="Roboto-Bold", color='white', align='West', bg_color='black').set_opacity(0.85).set_pos(('left', 'top')).set_duration(raw_video.duration)
-    txt2_clip = TextClip(text2, fontsize=20, font="Roboto-Bold", color='white', align='East', bg_color='black').set_opacity(0.85).set_pos(('right', 'top')).set_duration(raw_video.duration)
+    txt_clip = TextClip(text, fontsize=20, font="Roboto-Bold", color='white', align='West', bg_color='black').set_opacity(0.80).set_pos(('left', 'top')).set_duration(raw_video.duration)
+    txt2_clip = TextClip(text2, fontsize=20, font="Roboto-Bold", color='white', align='East', bg_color='black').set_opacity(0.80).set_pos(('right', 'top')).set_duration(raw_video.duration)
 
     # Combine the raw video with text overlays
     video = CompositeVideoClip([raw_video, txt_clip, txt2_clip])
@@ -146,16 +152,26 @@ for i in paths:
 ###################################
 
 # Lists all videos in the folder
-video_files = [f for f in os.listdir("/Users/zacharyaisen/Downloads/Thompson") if f.endswith("_edited.mp4")]
+# Editing each file individually(loop from above), leaves every edited file in your working directory
+# formatted as "1_edited.mp4", create a new folder with all of those called "Edited"
+video_files = [f for f in os.listdir("Edited") if f.endswith("_edited.mp4")]
 
-# Sort videos numerically
+# Sort videos in numerical order
 video_files_sorted = sorted(video_files, key=lambda x: int(x.split("_")[0]))
 
 # Load video clips
-clips = [VideoFileClip(os.path.join("/Users/zacharyaisen/Downloads/Thompson", f)) for f in video_files_sorted]
+game_clips = [VideoFileClip(os.path.join("Edited", f)) for f in video_files_sorted]
+
+# Adding pickoff videos
+# If needed, create a new synergy output folder of pickoffs, put it inside the original Synergy folder created
+pickoff_files = [f for f in os.listdir("Pickoffs/video") if f.endswith(".mp4")] # Gets file names
+pickoff_video_clips = [VideoFileClip(os.path.join("Pickoffs/video", f)).without_audio() for f in pickoff_files] # Gets videos based on file names
+
+# Edit game clips (with the pickoff videos at the end)
+all_clips = game_clips + pickoff_video_clips
 
 # Concatenate the videos
-final_video = concatenate_videoclips(clips, method="compose")  # method="compose" ensures compatibility
+final_video = concatenate_videoclips(all_clips, method="compose")  # method="compose" ensures compatibility
 
 # Export the final combined video
 final_video.write_videofile("final_video.mp4", codec="libx264", preset="ultrafast")
