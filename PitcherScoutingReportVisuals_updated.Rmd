@@ -1,0 +1,215 @@
+---
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_sections: false
+geometry: portrait, margin=0.05in
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(dplyr)
+library(gt)
+library(readr)
+library(gt)
+library(gtExtras)
+library(scales)
+library(patchwork)
+library(ggrepel)
+
+# Import csv for the starting pitcher to make the report on
+Pitcher <- read_csv("~/Downloads/StartingPitcher.csv")
+
+# Add strike zone binary
+Pitcher %>% mutate(kzone = ifelse(c(PlateLocSide >= -0.83083 & PlateLocSide <= 0.83083 & 
+                                      PlateLocHeight >= 1.5 & PlateLocHeight <= 3.5), 1, 0))
+
+# Defining pitch type coloring
+TMcolors <- c("4-Seam Fastball" = "#8E8E8E",
+              "Fastball" = "#8E8E8E",
+              "Cutter" = "purple",
+              "Sinker" = "#E50E00",
+              "Slider" = "#4595FF",
+              "Sweeper" = "#6ACDE5",
+              "Slurve" = "#D38B31",
+              "Changeup" = "#009A09",
+              "ChangeUp" = "#009A09",
+              "Split-Finger" = "#11C67B",
+              "Splitter" = "#11C67B",
+              "Curveball" = "orange",
+              "Knuckle Curve" = "orange",
+              "Screwball" = "#ECE400",
+              "Forkball" = "#00F9AC",
+              "Knuckleball" = "aquamarine")
+
+```
+
+
+
+
+```{r plot, warning=FALSE, ofig.width=10, fig.height=6, out.width='100%', message=FALSE}
+
+Pitcher_Filtered <- Pitcher %>%
+  group_by(TaggedPitchType) %>%
+  filter(n() >= 15) %>%  # Add minimum pitch count
+  ungroup()
+
+
+# Movement plot
+p1 <- Pitcher_Filtered %>% ggplot(aes(HorzBreak, InducedVertBreak)) +
+  geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") +
+  geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") +
+  coord_equal(xlim = c(-25, 25), ylim = c(-25, 25)) +
+  geom_point(aes(fill = TaggedPitchType), shape = 21, color = "black", size = 1.8, show.legend = TRUE) +
+  labs(x = NULL, y = NULL) +
+  scale_fill_manual(values = TMcolors) + theme_light() + 
+  theme(legend.position = "bottom", legend.text = element_text(size = 5), legend.title = element_text(size = 7),
+        plot.margin = margin(0, 0, 0, 0),)
+
+
+p2 <- Pitcher_Filtered %>%
+  ggplot(aes(PlateLocSide, PlateLocHeight), na.rm = TRUE) + 
+  # facet_wrap(~ TaggedPitchType, nrow = 1) +
+  facet_grid(TaggedPitchType ~ BatterSide) +
+  # geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
+  #                        show.legend = FALSE, bins = 40) +
+  stat_density_2d(aes(fill = after_stat(ndensity)), geom = "raster", contour = FALSE, show.legend = FALSE) +
+  scale_fill_gradientn(colours = c("white", "blue", "#FF9999", "red", "darkred")) +
+  coord_equal(xlim= c(-2,2), ylim = c(-0.5,5)) + 
+  annotate("path", 
+           x = c(-0.708, 0.708, 0.708, 0, -0.708, -0.708),
+           y = c(0.15, 0.15, 0.3, 0.5, 0.3, 0.15),
+           color = "black", linewidth = 0.5) +
+  geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "black", alpha = 0.5) + 
+  geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "black", alpha = 0.5) + 
+  geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) + 
+  geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_blank(),        # Remove x-axis tick labels
+             axis.text.y = element_blank(),        # Remove y-axis tick labels
+             axis.ticks.x = element_blank(),       # Remove x-axis ticks
+             axis.ticks.y = element_blank(),       # Remove y-axis ticks
+             axis.title.x = element_blank(),       # Remove x-axis title
+             axis.title.y = element_blank()) + 
+  theme(
+    plot.title = element_text(size = 10),
+    axis.title = element_text(size = 8),
+    plot.margin = margin(0, 0, 0, 0),  # top, right, bottom, left in points
+    strip.text.y = element_text(size = 5),
+  strip.text.x = element_text(size = 8)
+  ) +
+  coord_fixed(ratio = 1)
+
+
+
+### Adding pitcher ahead, batter ahead usages
+# Step 1: Add Count Situation labels
+trackman_labeled <- Pitcher_Filtered %>%
+  mutate(CountSituation = case_when(
+    Balls > Strikes ~ "Hitter Ahead",
+    Strikes > Balls ~ "Pitcher Ahead",
+    TRUE ~ "Overall"
+  ))
+
+# Step 2: Create data frame for each scenario and bind
+usage_all <- Pitcher_Filtered %>%
+  mutate(CountSituation = "Overall")
+
+combined_data <- bind_rows(usage_all, trackman_labeled)
+
+# Step 3: Summarize pitch usage
+pitch_usage <- combined_data %>%
+  group_by(CountSituation, BatterSide, TaggedPitchType) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(CountSituation, BatterSide) %>%
+  mutate(
+    UsagePct = Count / sum(Count),
+    Label = paste0(TaggedPitchType, "\n", percent(UsagePct, accuracy = 1))
+  )
+
+
+pitch_usage$CountSituation <- factor(
+  pitch_usage$CountSituation,
+  levels = c("Overall", "Hitter Ahead", "Pitcher Ahead")
+)
+
+
+
+p3 <- pitch_usage %>%
+  ggplot(aes(x = 2, y = UsagePct, fill = TaggedPitchType)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y", clip = "off") +
+  facet_grid(BatterSide ~ CountSituation) + 
+  theme_void() +
+  scale_fill_manual(values = TMcolors) +
+  geom_label_repel(
+    aes(label = Label),
+    position = position_stack(vjust = 0.5),
+    size = 1.5,
+    box.padding = 0,
+    color = "white") +
+  theme(
+    aspect.ratio = 1,
+    legend.position = "none",
+    strip.text.y = element_text(size = 10, face = "bold"),   
+    strip.text.x = element_text(size = 10, face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+((p1 + p2) / p3) + 
+  plot_layout(widths = c(1, 5), heights = c(2, 2))
+
+```
+
+
+```{r table, echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
+
+
+Pitcher_Filtered %>% mutate(kzone = ifelse(c(PlateLocSide >= -0.83083 & PlateLocSide <= 0.83083 & 
+                                             PlateLocHeight >= 1.5 & PlateLocHeight <= 3.5), 1, 0)) %>%
+  group_by(TaggedPitchType) %>%
+  reframe(
+    Count = n(),
+    UsagePct = (n() / nrow(Pitcher_Filtered)),
+    `Strike%` = sum(PitchCall %in% c("StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable",
+                                     "FoulBallFieldable", "InPlay")) / n(),
+    `InZone%` = sum(kzone == 1, na.rm = TRUE) / n(),
+    WhiffPct = sum(PitchCall == "StrikeSwinging") /
+      sum(PitchCall %in% c("StrikeSwinging", "FoulBallNotFieldable",
+                           "FoulBallFieldable", "InPlay")),
+    `Chase%` = sum(kzone == 0 & PitchCall %in% c("StrikeSwinging", "FoulBallNotFieldable",
+                                                 "FoulBallFieldable", "InPlay"), na.rm = TRUE) /
+      sum(kzone == 0),
+    Velo = round(mean(RelSpeed, na.rm = TRUE), 1),
+    `Velo (max / min)` = paste(
+      round(max(RelSpeed, na.rm = TRUE), 1),
+      round(min(RelSpeed, na.rm = TRUE), 1),
+      sep = " / "
+    ),
+    Spin = round(mean(SpinRate, na.rm = TRUE), 0),
+    IVB = round(mean(InducedVertBreak, na.rm = TRUE), 1),
+    HB = round(mean(HorzBreak, na.rm = TRUE), 1),
+    VAA = round(mean(VertApprAngle, na.rm = TRUE), 1)
+  ) %>%
+  arrange(desc(Count)) %>%
+  gt() %>%
+  gt_theme_538() %>%
+  fmt_percent(columns = c(UsagePct, `Strike%`, `InZone%`, WhiffPct, `Chase%`), decimals = 1) %>%
+  # data_color(
+  #   columns = WhiffPct
+  #   colors = scales::col_quantile(
+  #     palette = c("blue", "white", "red"),
+  #     domain = c(0, 0.5),
+  #     # probs = c(0, 0.5),  # custom quantile split: low, median, high
+  #     na.color = "gray90"  # auto-scale based on data
+  #   )) %>%
+  tab_options(
+    table.width = pct(100),          # stretch table to full text width
+    table.font.size = 10,             # reduce font size (try 8–10)
+    data_row.padding = px(1),        # reduce row spacing
+    heading.title.font.size = 10,
+    heading.subtitle.font.size = 9
+  )
+```
