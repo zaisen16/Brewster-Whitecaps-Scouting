@@ -8,6 +8,7 @@ The video portion of this repository is all a project I made, to overlay TrackMa
 <img width="1440" height="769" alt="Screenshot 2025-08-08 at 18 45 18" src="https://github.com/user-attachments/assets/1458c01b-433f-4f7e-90f8-4cef09488607" />
 
 
+
 **Rmarkdown graphics:**
 This was a simple Rmarkdown file, made to give a very general overview of an opposing pitcher.
 
